@@ -277,38 +277,51 @@ bool CCamera::Init(int width, int height, int framerate, int num_levels, bool do
 	video_port = camera->output[MMAL_CAMERA_VIDEO_PORT];
 	video_port->buffer_num = 3;
 
-	//create the splitter component
-	splitter = CreateSplitterComponentAndSetupPorts(video_port);
-	if(!splitter)
-		goto error;
-
-	//create and enable a connection between the video output and the resizer input
-	status = mmal_connection_create(&vid_to_split_connection, video_port, splitter->input[0], MMAL_CONNECTION_FLAG_TUNNELLING | MMAL_CONNECTION_FLAG_ALLOCATION_ON_INPUT);
-	if (status != MMAL_SUCCESS)
-	{
-		printf("Failed to create connection\n");
-		goto error;
-	}
-	status = mmal_connection_enable(vid_to_split_connection);
-	if (status != MMAL_SUCCESS)
-	{
-		printf("Failed to enable connection\n");
-		goto error;
-	}
-
-	//setup all the outputs
-	for(int i = 0; i < num_levels; i++)
-	{
-		outputs[i] = new CCameraOutput();
-		if(!outputs[i]->Init(Width >> i,Height >> i,splitter,i,do_argb_conversion))
-		{
-			printf("Failed to initialize output %d\n",i);
-			goto error;
-		}
-	}
-
-	//begin capture
-	if (mmal_port_parameter_set_boolean(video_port, MMAL_PARAMETER_CAPTURE, 1) != MMAL_SUCCESS)
+    //if all we want is a single output with the raw data, don't need to make a splitter
+    if(num_levels == 1 && !do_argb_conversion)
+    {
+        outputs[0] = new CCameraOutput();
+        if(!outputs[0]->Init(Width,Height,camera,MMAL_CAMERA_VIDEO_PORT,false))
+        {
+            printf("Failed to initialize output\n");
+            goto error;
+        }
+    }
+    else
+    {
+        //create the splitter component
+        splitter = CreateSplitterComponentAndSetupPorts(video_port);
+        if(!splitter)
+            goto error;
+        
+        //create and enable a connection between the video output and the resizer input
+        status = mmal_connection_create(&vid_to_split_connection, video_port, splitter->input[0], MMAL_CONNECTION_FLAG_TUNNELLING | MMAL_CONNECTION_FLAG_ALLOCATION_ON_INPUT);
+        if (status != MMAL_SUCCESS)
+        {
+            printf("Failed to create connection\n");
+            goto error;
+        }
+        status = mmal_connection_enable(vid_to_split_connection);
+        if (status != MMAL_SUCCESS)
+        {
+            printf("Failed to enable connection\n");
+            goto error;
+        }
+        
+        //setup all the outputs
+        for(int i = 0; i < num_levels; i++)
+        {
+            outputs[i] = new CCameraOutput();
+            if(!outputs[i]->Init(Width >> i,Height >> i,splitter,i,do_argb_conversion))
+            {
+                printf("Failed to initialize output %d\n",i);
+                goto error;
+            }
+        }
+    }
+    
+    //begin capture
+    if (mmal_port_parameter_set_boolean(video_port, MMAL_PARAMETER_CAPTURE, 1) != MMAL_SUCCESS)
 	{
 		printf("Failed to start capture\n");
 		goto error;
