@@ -114,6 +114,10 @@ void raspicamcontrol_set_defaults(RASPICAM_CAMERA_PARAMETERS *params)
    params->roi.x = params->roi.y = 0.0;
    params->roi.w = params->roi.h = 1.0;
    params->shutter_speed = 0;          // 0 = auto
+    
+   params->awb_gains_r = 0;      // Only have any function if AWB OFF is used.
+   params->awb_gains_b = 0;
+   params->drc_level = MMAL_PARAMETER_DRC_STRENGTH_OFF;
 }
 
 /**
@@ -167,6 +171,7 @@ int raspicamcontrol_set_all_parameters(MMAL_COMPONENT_T *camera, const RASPICAM_
    result += raspicamcontrol_set_exposure_mode(camera, params->exposureMode);
    result += raspicamcontrol_set_metering_mode(camera, params->exposureMeterMode);
    result += raspicamcontrol_set_awb_mode(camera, params->awbMode);
+   result += raspicamcontrol_set_awb_gains(camera, params->awb_gains_r, params->awb_gains_b);
    result += raspicamcontrol_set_imageFX(camera, params->imageEffect);
    result += raspicamcontrol_set_colourFX(camera, &params->colourEffects);
    //result += raspicamcontrol_set_thumbnail_parameters(camera, &params->thumbnailConfig);  TODO Not working for some reason
@@ -174,7 +179,7 @@ int raspicamcontrol_set_all_parameters(MMAL_COMPONENT_T *camera, const RASPICAM_
    result += raspicamcontrol_set_flips(camera, params->hflip, params->vflip);
    result += raspicamcontrol_set_ROI(camera, params->roi);
    result += raspicamcontrol_set_shutter_speed(camera, params->shutter_speed);
-
+   result += raspicamcontrol_set_DRC(camera, params->drc_level);
    return result;
 }
 
@@ -348,7 +353,6 @@ int raspicamcontrol_set_exposure_compensation(MMAL_COMPONENT_T *camera, int exp_
    return mmal_status_to_int(mmal_port_parameter_set_int32(camera->control, MMAL_PARAMETER_EXPOSURE_COMP , exp_comp));
 }
 
-
 /**
  * Set exposure mode for images
  * @param camera Pointer to camera component
@@ -404,6 +408,22 @@ int raspicamcontrol_set_awb_mode(MMAL_COMPONENT_T *camera, MMAL_PARAM_AWBMODE_T 
       return 1;
 
    return mmal_status_to_int(mmal_port_parameter_set(camera->control, &param.hdr));
+}
+
+int raspicamcontrol_set_awb_gains(MMAL_COMPONENT_T *camera, float r_gain, float b_gain)
+{
+    MMAL_PARAMETER_AWB_GAINS_T param = {{MMAL_PARAMETER_CUSTOM_AWB_GAINS,sizeof(param)}, {0,0}, {0,0}};
+    
+    if (!camera)
+        return 1;
+    
+    if (!r_gain || !b_gain)
+        return 0;
+    
+    param.r_gain.num = (unsigned int)(r_gain * 65536);
+    param.b_gain.num = (unsigned int)(b_gain * 65536);
+    param.r_gain.den = param.b_gain.den = 65536;
+    return mmal_status_to_int(mmal_port_parameter_set(camera->control, &param.hdr));
 }
 
 /**
@@ -550,7 +570,26 @@ int raspicamcontrol_set_shutter_speed(MMAL_COMPONENT_T *camera, int speed)
    return mmal_status_to_int(mmal_port_parameter_set_uint32(camera->control, MMAL_PARAMETER_SHUTTER_SPEED, speed));
 }
 
-
+/**
+ * Adjust the Dynamic range compression level
+ * @param camera Pointer to camera component
+ * @param strength Strength of DRC to apply
+ *        MMAL_PARAMETER_DRC_STRENGTH_OFF
+ *        MMAL_PARAMETER_DRC_STRENGTH_LOW
+ *        MMAL_PARAMETER_DRC_STRENGTH_MEDIUM
+ *        MMAL_PARAMETER_DRC_STRENGTH_HIGH
+ *
+ * @return 0 if successful, non-zero if any parameters out of range
+ */
+int raspicamcontrol_set_DRC(MMAL_COMPONENT_T *camera, MMAL_PARAMETER_DRC_STRENGTH_T strength)
+{
+    MMAL_PARAMETER_DRC_T drc = {{MMAL_PARAMETER_DYNAMIC_RANGE_COMPRESSION, sizeof(MMAL_PARAMETER_DRC_T)}, strength};
+    
+    if (!camera)
+        return 1;
+    
+    return mmal_status_to_int(mmal_port_parameter_set(camera->control, &drc.hdr));
+}
 
 /**
  * Asked GPU how much memory it has allocated
