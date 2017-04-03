@@ -1,7 +1,7 @@
 #include <stdio.h>
 #include <unistd.h>
 #include "camera.h"
-#include "graphics.h"
+//#include "graphics.h"
 
 #define MAIN_TEXTURE_WIDTH 512
 #define MAIN_TEXTURE_HEIGHT 512
@@ -18,9 +18,13 @@ int main(int argc, const char **argv)
 	int num_levels = 4;
 
 	//init graphics and the camera
-	InitGraphics();
+	//InitGraphics();
 	CCamera* cam = StartCamera(MAIN_TEXTURE_WIDTH, MAIN_TEXTURE_HEIGHT,30,num_levels,do_argb_conversion);
 
+    /*
+     // DISABLE GRAPHICS-FUNCTIONS
+     
+     
 	//create 4 textures of decreasing size
 	GfxTexture textures[4];
 	for(int texidx = 0; texidx < num_levels; texidx++)
@@ -58,6 +62,7 @@ int main(int argc, const char **argv)
 		DrawTextureRect(&textures[texidx],-aspect_ratio/screen_aspect_ratio,-1.f,aspect_ratio/screen_aspect_ratio,1.f);
 		EndFrame();
 	}
+     */
 
-	StopCamera();
+    StopCamera();
 }
