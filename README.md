@@ -11,4 +11,7 @@ Updated such that:
 - It works with [this crosscompile environment](https://github.com/HesselM/rpicross_notes)
 - It utilised RaspiCamControl updates from 2013-2017
 - It supports the Sony IMX218 (RaspiCam v2.0) 
+- OpenCV supported to show/stream results
 
+Notes:
+- See issues.
