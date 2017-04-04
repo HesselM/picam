@@ -489,6 +489,11 @@ error:
 
 void CCameraOutput::Release()
 {
+    
+    //disable Port
+    if (BufferPort && BufferPort->is_enabled)
+        mmal_port_disable(BufferPort);
+    
 	if(OutputQueue)
 		mmal_queue_destroy(OutputQueue);
 	if(BufferPool)
