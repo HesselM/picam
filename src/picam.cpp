@@ -1,68 +1,150 @@
 #include <stdio.h>
 #include <unistd.h>
+#include <string>
+
+//camera-functions
 #include "camera.h"
+
+//graphics/egl library
 //#include "graphics.h"
 
-#define MAIN_TEXTURE_WIDTH 512
-#define MAIN_TEXTURE_HEIGHT 512
+//opencv
+#include <opencv2/core/core.hpp>
+#include <opencv2/highgui/highgui.hpp>
+#include <opencv2/imgproc/imgproc.hpp>
 
-char tmpbuff[MAIN_TEXTURE_WIDTH*MAIN_TEXTURE_HEIGHT*4];
+//image size
+//#define IMAGE_HEIGHT 512
+//#define IMAGE_WIDTH 768
+
+#define IMAGE_HEIGHT 512
+#define IMAGE_WIDTH 512
+
+
+inline uchar clip(int n) {
+    n &= -(n >= 0);
+    return n | ((255 - n) >> 31);
+}
+
+//YUV420 --> BGR888
+void yuv2bgr(uchar* &yuv, uchar* &bgr, int w, int h) {
+    //NOTE: not error checking/limits done! Make sure the given arrays are of appropiate size.
+    // > yuv: 1.50 * w * h byte
+    // > rgb: 3.00 * w * h byte
+    
+    int C, D, E;
+    
+    //start idx for U & V
+    int ys = 0;
+    int us = w*h;
+    int vs = w*h + ((w*h)>>2);
+    
+    // row/column derived from i in U/V domain
+    int r, c;
+    
+    for (int i=0;i<w*h;i++) {
+        //get current position
+        r = (((int)floor(i/w)) >> 1) * (w>>1);
+        c = (i%w) >> 1;
+        
+        //read values
+        C = yuv[ys + i] - 16;
+        D = yuv[us + r + c] - 128;
+        E = yuv[vs + r + c] - 128;
+        
+        //compute 
+        bgr[i*3 + 0] = clip(( 298 * C + 516 * D           + 128) >> 8); //B
+        bgr[i*3 + 1] = clip(( 298 * C - 100 * D - 208 * E + 128) >> 8); //G
+        bgr[i*3 + 2] = clip(( 298 * C           + 409 * E + 128) >> 8); //R
+    }
+}
+
+
+
+void argb2bgr(uchar* &argb, uchar* &bgr, int w, int h) {
+    //NOTE: not error checking/limits done! Make sure the given arrays are of appropiate size.
+    // > argb: 4.00 * w * h byte
+    // >  rgb: 3.00 * w * h byte
+        
+    for (int i=0;i<w*h;i++) {
+        bgr[i*3 + 0] = argb[i*4 + 2]; //B
+        bgr[i*3 + 1] = argb[i*4 + 1]; //G
+        bgr[i*3 + 2] = argb[i*4 + 0]; //R
+    }
+}
+
+
 
 //entry point
 int main(int argc, const char **argv)
 {
+    //frame buffer
+    const void* buf; int buf_size;
+
 	//should the camera convert frame data from yuv to argb automatically?
 	bool do_argb_conversion = true;
-
+    
 	//how many detail levels (1 = just the capture res, > 1 goes down by half each level, 4 max)
-	int num_levels = 4;
+    // NOTE: OpenCV rendering below cannot handle this!
+	int num_levels = 1;
+    //frames per second
+    int frame_rate = 30;
+    int frames     = 100;
+    
+	//init camera
+	CCamera* cam = StartCamera(IMAGE_WIDTH, IMAGE_HEIGHT, frame_rate, num_levels, do_argb_conversion);
+   
+    //allocate images
+    cv::Mat img_yuv( IMAGE_HEIGHT*1.5, IMAGE_WIDTH, CV_8UC1);
+    cv::Mat img_bgr( IMAGE_HEIGHT    , IMAGE_WIDTH, CV_8UC3);
+    cv::Mat img_argb(IMAGE_HEIGHT    , IMAGE_WIDTH, CV_8UC4);
+    
+    printf("Creating OpenCV windows\n");
+    
+    //OpenCV: window to show images
+    // --> create for each level
+    std::string ocvwindow = std::string("ocvwindow");
+    for (int j=0; j<num_levels; j++)
+        cv::namedWindow( ocvwindow + std::to_string(j), cv::WINDOW_AUTOSIZE );
 
-	//init graphics and the camera
-	//InitGraphics();
-	CCamera* cam = StartCamera(MAIN_TEXTURE_WIDTH, MAIN_TEXTURE_HEIGHT,30,num_levels,do_argb_conversion);
+    printf("Running frame loop\n");
+    for (int i=0; i<frames; i++) {
+ 
+        //read frames of all levels
+        for (int j=0; j<num_levels; j++) {
 
-    /*
-     // DISABLE GRAPHICS-FUNCTIONS
-     
-     
-	//create 4 textures of decreasing size
-	GfxTexture textures[4];
-	for(int texidx = 0; texidx < num_levels; texidx++)
-		textures[texidx].Create(MAIN_TEXTURE_WIDTH >> texidx, MAIN_TEXTURE_HEIGHT >> texidx);
+            //load frame into tmp
+            if(cam->BeginReadFrame(j, buf, buf_size)) {
+        
+                //copy data to Mat-object
+                printf("%d - read: %d bytes\n", i, buf_size);
+                
+                if (do_argb_conversion) {
+                    // argb --> bgr                    
+                    img_argb.data = (uchar*) buf;
+                    argb2bgr( img_argb.data, img_bgr.data, IMAGE_WIDTH, IMAGE_HEIGHT);
+                    
+                } else {
+                    // yuv420 --> bgr                    
+                    img_yuv.data = (uchar*) buf;
+                    yuv2bgr( img_yuv.data, img_bgr.data, IMAGE_WIDTH, IMAGE_HEIGHT);
+                }
+                
+                //show image
+                cv::imshow( ocvwindow + std::to_string(j), img_bgr);
 
-	printf("Running frame loop\n");
-	for(int i = 0; i < 3000; i++)
-	{
-		//pick a level to read based on current frame (flicking through them every 30 frames)
-		int texidx = (i / 30)%num_levels;
+            } else {
+                printf("%d - Cannot read %d\n", i, j);
+            }
+        
+            cam->EndReadFrame(j);
+        }
+        
+        //wait for key
+        cv::waitKey(10 + (1000/frame_rate));
+        //cv::waitKey(0);
+    }
 
-		//lock the chosen frame buffer, and copy it directly into the corresponding open gl texture
-		const void* frame_data; int frame_sz;
-		if(cam->BeginReadFrame(texidx,frame_data,frame_sz))
-		{
-			if(do_argb_conversion)
-			{
-				//if doing argb conversion the frame data will be exactly the right size so just set directly
-				textures[texidx].SetPixels(frame_data);
-			}
-			else
-			{
-				//if not converting argb the data will be the wrong size and look weird, put copy it in
-				//via a temporary buffer just so we can observe something happening!
-				memcpy(tmpbuff,frame_data,frame_sz);
-				textures[texidx].SetPixels(tmpbuff);
-			}
-			cam->EndReadFrame(texidx);
-		}
-
-		//begin frame, draw the texture then end frame (the bit of maths just fits the image to the screen while maintaining aspect ratio)
-		BeginFrame();
-		float aspect_ratio = float(MAIN_TEXTURE_WIDTH)/float(MAIN_TEXTURE_HEIGHT);
-		float screen_aspect_ratio = 1280.f/720.f;
-		DrawTextureRect(&textures[texidx],-aspect_ratio/screen_aspect_ratio,-1.f,aspect_ratio/screen_aspect_ratio,1.f);
-		EndFrame();
-	}
-     */
-
+    //gracefully stop camera & mmal
     StopCamera();
 }
