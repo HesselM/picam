@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 2.8)
 
 project( picamdemo )
 
-SET(COMPILE_DEFINITIONS -Werror)
+set( CMAKE_CXX_FLAGS "-Werror -std=c++11 ${CMAKE_CXX_FLAGS}")
 
 #include required packages
 find_package( OpenCV REQUIRED )
@@ -28,13 +28,12 @@ include_directories(${USERLAND_DIR})
 # Projectdirs
 include_directories(${CMAKE_SOURCE_DIR})
 include_directories(${CMAKE_SOURCE_DIR}/include)
-include_directories(${CMAKE_SOURCE_DIR}/shaders)
 
 add_executable(picamdemo 
-    picam.cpp 
-    camera.cpp 
-    cameracontrol.cpp 
-    graphics.cpp)
+    src/picam.cpp 
+    src/camera.cpp 
+    src/cameracontrol.cpp 
+)
 
 target_link_libraries(picamdemo ${OpenCV_LIBS})
 target_link_libraries(picamdemo ${CMAKE_THREAD_LIBS_INIT})
